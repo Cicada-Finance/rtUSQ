@@ -16,7 +16,7 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
     ISwapRouter02 public immutable router;
 
     address public immutable rtUSQ;
-    address public USD1;
+    address public tokenUsd;
     mapping(address => bool) public supportTokens;
     mapping(address => uint256) public userAsset;
 
@@ -45,9 +45,17 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
         _;
     }
 
-    event Invest(address indexed user, address indexed token, uint256 indexed amt);
+    event Invest(
+        address indexed user,
+        address indexed token,
+        uint256 indexed amt
+    );
     event Redeem(address indexed user, uint256 indexed amt);
-    event Withdraw(address indexed user, address indexed token, uint256 indexed amt);
+    event Withdraw(
+        address indexed user,
+        address indexed token,
+        uint256 indexed amt
+    );
     error InvalidToken();
     error NotWithdrawable();
     error NotInvestable();
@@ -58,6 +66,7 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
     event UpdateAdmin(address old, address newAddress);
     event UpdateAssetManager(address old, address newAddress);
     event UpdateSupportToken(address token, bool support);
+    event UpdateMaxSupply(uint256 indexed max, uint256 indexed subscribed);
 
     constructor(
         address _rtUSQ,
@@ -72,7 +81,7 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
         require(_admin != address(0), "Cannot be zero address");
         require(_usdt != address(0), "Cannot be zero address");
         rtUSQ = _rtUSQ;
-        USD1 = _usdt1;
+        tokenUsd = _usdt;
         supportTokens[_usdt1] = true;
         supportTokens[_usdt] = true;
         admin = _admin;
@@ -96,21 +105,26 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
         if (totalSubscribed >= maxSupply) {
             revert NotInvestable();
         }
-        if (token == USD1) {
+        if (token == tokenUsd) {
             IERC20(token).safeTransferFrom(_msgSender(), assetManager, _amount);
             IRtUSQ(rtUSQ).mintTo(_msgSender(), _amount);
             totalSubscribed += _amount;
             emit Invest(_msgSender(), token, _amount);
         } else {
-            IERC20(token).safeTransferFrom(_msgSender(), address(this), _amount);
+            IERC20(token).safeTransferFrom(
+                _msgSender(),
+                address(this),
+                _amount
+            );
             TransferHelper.safeApprove(token, address(router), _amount);
 
-            IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter.ExactInputParams({
-                path: path,
-                recipient: assetManager,
-                amountIn: _amount,
-                amountOutMinimum: amountOutMin
-            });
+            IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter
+                .ExactInputParams({
+                    path: path,
+                    recipient: assetManager,
+                    amountIn: _amount,
+                    amountOutMinimum: amountOutMin
+                });
             uint256 amountOut = router.exactInput(params);
             if (amountOut > 0) {
                 IRtUSQ(rtUSQ).mintTo(_msgSender(), amountOut);
@@ -141,17 +155,18 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
         uint256 amt = userAsset[_user];
         if (amt > 0) {
             userAsset[_user] = 0;
-            if (token == USD1) {
+            if (token == tokenUsd) {
                 IERC20(token).transfer(_user, amt);
                 emit Withdraw(_user, token, amt);
             } else {
-                TransferHelper.safeApprove(USD1, address(router), amt);
-                IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter.ExactInputParams({
-                    path: path,
-                    recipient: _user,
-                    amountIn: amt,
-                    amountOutMinimum: amountOutMin
-                });
+                TransferHelper.safeApprove(tokenUsd, address(router), amt);
+                IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter
+                    .ExactInputParams({
+                        path: path,
+                        recipient: _user,
+                        amountIn: amt,
+                        amountOutMinimum: amountOutMin
+                    });
                 uint256 amountOut = router.exactInput(params);
                 emit Withdraw(_user, token, amt);
             }
@@ -163,7 +178,9 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
     function refundToken(address token, address to) external onlyAssetManager {
         require(to != address(0), "Cannot be zero address");
         if (token == address(0)) {
-            (bool success, ) = payable(to).call{ value: address(this).balance }("");
+            (bool success, ) = payable(to).call{value: address(this).balance}(
+                ""
+            );
             if (!success) {
                 revert();
             }
@@ -184,12 +201,23 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
         withdrawEnabled = _enabled;
     }
 
-    function setMaxSupply(uint256 _max, uint256 _subscribed) external onlyAdmin {
+    function setMaxSupply(
+        uint256 _max,
+        uint256 _subscribed
+    ) external onlyAdmin {
         maxSupply = _max;
         totalSubscribed = _subscribed;
+        emit UpdateMaxSupply(_max, _subscribed);
     }
 
-    function updateSupportToken(address _token, bool _support) external onlyOwner {
+    function setUsdToken(address _token) external onlyOwner {
+        tokenUsd = _token;
+    }
+
+    function updateSupportToken(
+        address _token,
+        bool _support
+    ) external onlyOwner {
         supportTokens[_token] = _support;
         emit UpdateSupportToken(_token, _support);
     }
@@ -205,6 +233,6 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
         require(assetManager_ != address(0), "Cannot be zero address");
         address prev = assetManager;
         assetManager = assetManager_;
-        emit UpdateAdmin(prev, assetManager_);
+        emit UpdateAssetManager(prev, assetManager_);
     }
 }
