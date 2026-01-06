@@ -3,9 +3,9 @@ pragma solidity 0.8.7;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-
 import "@uniswap/swap-router-contracts/contracts/interfaces/ISwapRouter02.sol";
 
+import "./utils/PathParser.sol";
 import "./utils/TransferHelper.sol";
 import "./utils/Ownable.sol";
 import "./utils/ReentrancyGuard.sol";
@@ -111,13 +111,13 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
             totalSubscribed += _amount;
             emit Invest(_msgSender(), token, _amount);
         } else {
+            _checkPath(path);
             IERC20(token).safeTransferFrom(
                 _msgSender(),
                 address(this),
                 _amount
             );
             TransferHelper.safeApprove(token, address(router), _amount);
-
             IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter
                 .ExactInputParams({
                     path: path,
@@ -125,6 +125,7 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
                     amountIn: _amount,
                     amountOutMinimum: amountOutMin
                 });
+
             uint256 amountOut = router.exactInput(params);
             if (amountOut > 0) {
                 IRtUSQ(rtUSQ).mintTo(_msgSender(), amountOut);
@@ -159,6 +160,10 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
                 IERC20(token).transfer(_user, amt);
                 emit Withdraw(_user, token, amt);
             } else {
+                address outputToken = PathParser.getLastToken(path);
+                if (outputToken != token) {
+                    revert InvalidToken();
+                }
                 TransferHelper.safeApprove(tokenUsd, address(router), amt);
                 IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter
                     .ExactInputParams({
@@ -167,7 +172,7 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
                         amountIn: amt,
                         amountOutMinimum: amountOutMin
                     });
-                uint256 amountOut = router.exactInput(params);
+                router.exactInput(params);
                 emit Withdraw(_user, token, amt);
             }
         } else {
@@ -234,5 +239,12 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
         address prev = assetManager;
         assetManager = assetManager_;
         emit UpdateAssetManager(prev, assetManager_);
+    }
+
+    function _checkPath(bytes calldata path) internal view {
+        address outputToken = PathParser.getLastToken(path);
+        if (outputToken != tokenUsd) {
+            revert InvalidToken();
+        }
     }
 }
