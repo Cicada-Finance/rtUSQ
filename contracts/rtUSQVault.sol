@@ -11,7 +11,7 @@ import "./utils/Ownable.sol";
 import "./utils/ReentrancyGuard.sol";
 import "./interface/IRtUSQ.sol";
 
-contract rtUSQVaulat is Ownable, ReentrancyGuard {
+contract rtUSQVault is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     ISwapRouter02 public immutable router;
 
@@ -20,9 +20,9 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
     mapping(address => bool) public supportTokens;
     mapping(address => uint256) public userAsset;
 
-    bool public investEnabled = true;
+    bool public investEnabled = false;
     bool public redeemEnabled = false;
-    bool public withdrawEnabled = true;
+    bool public withdrawEnabled = false;
 
     address public assetManager;
     address public admin;
@@ -45,17 +45,9 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
         _;
     }
 
-    event Invest(
-        address indexed user,
-        address indexed token,
-        uint256 indexed amt
-    );
+    event Invest(address indexed user, address indexed token, uint256 indexed amt);
     event Redeem(address indexed user, uint256 indexed amt);
-    event Withdraw(
-        address indexed user,
-        address indexed token,
-        uint256 indexed amt
-    );
+    event Withdraw(address indexed user, address indexed token, uint256 indexed amt);
     error InvalidToken();
     error NotWithdrawable();
     error NotInvestable();
@@ -87,6 +79,7 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
         admin = _admin;
         assetManager = _assetManger;
         router = ISwapRouter02(_router);
+        maxSupply = 1000000 * 1e18;
     }
 
     function getState() public view returns (bool, bool, bool) {
@@ -112,19 +105,14 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
             emit Invest(_msgSender(), token, _amount);
         } else {
             _checkPath(path);
-            IERC20(token).safeTransferFrom(
-                _msgSender(),
-                address(this),
-                _amount
-            );
+            IERC20(token).safeTransferFrom(_msgSender(), address(this), _amount);
             TransferHelper.safeApprove(token, address(router), _amount);
-            IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter
-                .ExactInputParams({
-                    path: path,
-                    recipient: assetManager,
-                    amountIn: _amount,
-                    amountOutMinimum: amountOutMin
-                });
+            IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter.ExactInputParams({
+                path: path,
+                recipient: assetManager,
+                amountIn: _amount,
+                amountOutMinimum: amountOutMin
+            });
 
             uint256 amountOut = router.exactInput(params);
             if (amountOut > 0) {
@@ -165,13 +153,12 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
                     revert InvalidToken();
                 }
                 TransferHelper.safeApprove(tokenUsd, address(router), amt);
-                IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter
-                    .ExactInputParams({
-                        path: path,
-                        recipient: _user,
-                        amountIn: amt,
-                        amountOutMinimum: amountOutMin
-                    });
+                IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter.ExactInputParams({
+                    path: path,
+                    recipient: _user,
+                    amountIn: amt,
+                    amountOutMinimum: amountOutMin
+                });
                 router.exactInput(params);
                 emit Withdraw(_user, token, amt);
             }
@@ -183,9 +170,7 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
     function refundToken(address token, address to) external onlyAssetManager {
         require(to != address(0), "Cannot be zero address");
         if (token == address(0)) {
-            (bool success, ) = payable(to).call{value: address(this).balance}(
-                ""
-            );
+            (bool success, ) = payable(to).call{ value: address(this).balance }("");
             if (!success) {
                 revert();
             }
@@ -206,10 +191,7 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
         withdrawEnabled = _enabled;
     }
 
-    function setMaxSupply(
-        uint256 _max,
-        uint256 _subscribed
-    ) external onlyAdmin {
+    function setMaxSupply(uint256 _max, uint256 _subscribed) external onlyAdmin {
         maxSupply = _max;
         totalSubscribed = _subscribed;
         emit UpdateMaxSupply(_max, _subscribed);
@@ -219,10 +201,7 @@ contract rtUSQVaulat is Ownable, ReentrancyGuard {
         tokenUsd = _token;
     }
 
-    function updateSupportToken(
-        address _token,
-        bool _support
-    ) external onlyOwner {
+    function updateSupportToken(address _token, bool _support) external onlyOwner {
         supportTokens[_token] = _support;
         emit UpdateSupportToken(_token, _support);
     }
