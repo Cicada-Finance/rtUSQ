@@ -136,8 +136,8 @@ contract WrappedRtUSQ is ERC4626, Ownable, ReentrancyGuard {
         address recipient,
         bytes calldata path
     ) external nonReentrant returns (uint256 quoteTokenReceived) {
-        rtUSQ.safeTransferFrom(msg.sender, address(this), rtUsqAmount);
         uint256 wrappedSharesMinted = previewDeposit(rtUsqAmount);
+        rtUSQ.safeTransferFrom(msg.sender, address(this), rtUsqAmount);
         _mint(address(this), wrappedSharesMinted);
         emit Deposit(
             address(this),
