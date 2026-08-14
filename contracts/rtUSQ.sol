@@ -2,10 +2,10 @@
 
 pragma solidity 0.8.7;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./utils/SafeMath.sol";
-import "./utils/SafeMathInt.sol";
-import "./utils/Ownable.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { Ownable } from "./utils/Ownable.sol";
+import { SafeMath } from "./utils/SafeMath.sol";
+import { SafeMathInt } from "./utils/SafeMathInt.sol";
 
 contract rtUSQ is IERC20, Ownable {
     using SafeMath for uint256;
@@ -31,10 +31,7 @@ contract rtUSQ is IERC20, Ownable {
     address public rtUSQVault;
 
     modifier onlyMonetaryPolicy() {
-        require(
-            msg.sender == monetaryPolicy || msg.sender == owner(),
-            "permissions error"
-        );
+        require(msg.sender == monetaryPolicy || msg.sender == owner(), "permissions error");
         _;
     }
 
@@ -43,26 +40,13 @@ contract rtUSQ is IERC20, Ownable {
         _;
     }
 
-    event TransferShares(
-        address indexed from,
-        address indexed to,
-        uint256 sharesValue
-    );
+    event TransferShares(address indexed from, address indexed to, uint256 sharesValue);
 
-    event SharesBurnt(
-        address indexed account,
-        uint256 preRebaseTokenAmount,
-        uint256 postRebaseTokenAmount,
-        uint256 sharesAmount
-    );
     event LogRebase(uint256 indexed epoch, int256 amount, uint256 totalSupply);
 
     event LogMonetaryPolicyUpdated(address monetaryPolicy);
 
-    constructor(
-        string memory name_,
-        string memory symbol_
-    ) Ownable(msg.sender) {
+    constructor(string memory name_, string memory symbol_) Ownable(msg.sender) {
         _name = name_;
         _symbol = symbol_;
     }
@@ -86,9 +70,7 @@ contract rtUSQ is IERC20, Ownable {
         _burn(from, _amount);
     }
 
-    function rebase(
-        int256 _amount
-    ) public onlyMonetaryPolicy returns (uint256) {
+    function rebase(int256 _amount) public onlyMonetaryPolicy returns (uint256) {
         if (_amount == 0) {
             lastEpoch += 1;
             emit LogRebase(lastEpoch, _amount, _totalSupply);
@@ -120,9 +102,11 @@ contract rtUSQ is IERC20, Ownable {
         return _totalSupply;
     }
 
-    function balanceOf(
-        address _account
-    ) public view override returns (uint256) {
+    function balanceOf(address _account) public view override returns (uint256) {
+        if (_totalSupply == 0 || _totalShares == 0) {
+            return 0;
+        }
+
         return getRShares(_sharesOf(_account));
     }
 
@@ -135,10 +119,22 @@ contract rtUSQ is IERC20, Ownable {
     }
 
     function getSharesByRt(uint256 _rAmount) public view returns (uint256) {
+        if (_rAmount == 0) {
+            return 0;
+        }
+
+        if (_totalSupply == 0 || _totalShares == 0) {
+            return _rAmount;
+        }
+
         return _rAmount.mul(_getTotalShares()).div(totalSupply());
     }
 
     function getRShares(uint256 _sharesAmount) public view returns (uint256) {
+        if (_sharesAmount == 0 || _totalSupply == 0 || _totalShares == 0) {
+            return 0;
+        }
+
         return _sharesAmount.mul(totalSupply()).div(_getTotalShares());
     }
 
@@ -150,10 +146,7 @@ contract rtUSQ is IERC20, Ownable {
         return shares[_account];
     }
 
-    function transfer(
-        address _recipient,
-        uint256 _amount
-    ) public virtual override returns (bool) {
+    function transfer(address _recipient, uint256 _amount) public virtual override returns (bool) {
         _transfer(msg.sender, _recipient, _amount);
         return true;
     }
@@ -163,96 +156,59 @@ contract rtUSQ is IERC20, Ownable {
         return true;
     }
 
-    function allowance(
-        address _owner,
-        address _spender
-    ) public view override returns (uint256) {
+    function allowance(address _owner, address _spender) public view override returns (uint256) {
         return allowances[_owner][_spender];
     }
 
-    function approve(
-        address _spender,
-        uint256 _amount
-    ) public override returns (bool) {
+    function approve(address _spender, uint256 _amount) public override returns (bool) {
         _approve(msg.sender, _spender, _amount);
         return true;
     }
 
-    function transferFrom(
-        address _sender,
-        address _recipient,
-        uint256 _amount
-    ) public override returns (bool) {
+    function transferFrom(address _sender, address _recipient, uint256 _amount) public override returns (bool) {
         _spendAllowance(_sender, msg.sender, _amount);
         _transfer(_sender, _recipient, _amount);
         return true;
     }
 
-    function increaseAllowance(
-        address _spender,
-        uint256 _addedValue
-    ) public virtual returns (bool) {
-        _approve(
-            msg.sender,
-            _spender,
-            allowances[msg.sender][_spender].add(_addedValue)
-        );
+    function increaseAllowance(address _spender, uint256 _addedValue) public virtual returns (bool) {
+        _approve(msg.sender, _spender, allowances[msg.sender][_spender].add(_addedValue));
         return true;
     }
 
-    function decreaseAllowance(
-        address _spender,
-        uint256 _subtractedValue
-    ) public virtual returns (bool) {
+    function decreaseAllowance(address _spender, uint256 _subtractedValue) public virtual returns (bool) {
         uint256 currentAllowance = allowances[msg.sender][_spender];
         require(currentAllowance >= _subtractedValue, "ALLOWANCE_BELOW_ZERO");
         _approve(msg.sender, _spender, currentAllowance.sub(_subtractedValue));
         return true;
     }
 
-    function transferShares(
-        address _recipient,
-        uint256 _sharesAmount
-    ) external returns (uint256) {
+    function transferShares(address _recipient, uint256 _sharesAmount) external returns (uint256) {
         _transferShares(msg.sender, _recipient, _sharesAmount);
         uint256 tokensAmount = getRShares(_sharesAmount);
-        _emitTransferEvents(
-            msg.sender,
-            _recipient,
-            tokensAmount,
-            _sharesAmount
-        );
+        require(_sharesAmount == 0 || tokensAmount > 0, "AMOUNT_TOO_SMALL");
+        _emitTransferEvents(msg.sender, _recipient, tokensAmount, _sharesAmount);
         return tokensAmount;
     }
 
-    function transferSharesFrom(
-        address _sender,
-        address _recipient,
-        uint256 _sharesAmount
-    ) external returns (uint256) {
+    function transferSharesFrom(address _sender, address _recipient, uint256 _sharesAmount) external returns (uint256) {
         uint256 tokensAmount = getRShares(_sharesAmount);
+        require(_sharesAmount == 0 || tokensAmount > 0, "AMOUNT_TOO_SMALL");
         _spendAllowance(_sender, msg.sender, tokensAmount);
         _transferShares(_sender, _recipient, _sharesAmount);
         _emitTransferEvents(_sender, _recipient, tokensAmount, _sharesAmount);
         return tokensAmount;
     }
 
-    function _transfer(
-        address _sender,
-        address _recipient,
-        uint256 _amount
-    ) internal virtual {
+    function _transfer(address _sender, address _recipient, uint256 _amount) internal virtual {
         uint256 _sharesToTransfer = getSharesByRt(_amount);
+        require(_amount == 0 || _sharesToTransfer > 0, "AMOUNT_TOO_SMALL");
 
         _transferShares(_sender, _recipient, _sharesToTransfer);
         _emitTransferEvents(_sender, _recipient, _amount, _sharesToTransfer);
     }
 
-    function _approve(
-        address _owner,
-        address _spender,
-        uint256 _amount
-    ) internal virtual {
+    function _approve(address _owner, address _spender, uint256 _amount) internal virtual {
         require(_owner != address(0), "APPROVE_FROM_ZERO_ADDR");
         require(_spender != address(0), "APPROVE_TO_ZERO_ADDR");
 
@@ -260,11 +216,7 @@ contract rtUSQ is IERC20, Ownable {
         emit Approval(_owner, _spender, _amount);
     }
 
-    function _spendAllowance(
-        address _owner,
-        address _spender,
-        uint256 _amount
-    ) internal virtual {
+    function _spendAllowance(address _owner, address _spender, uint256 _amount) internal virtual {
         uint256 currentAllowance = allowances[_owner][_spender];
         if (currentAllowance != INFINITE_ALLOWANCE) {
             require(currentAllowance >= _amount, "ALLOWANCE_EXCEEDED");
@@ -272,11 +224,7 @@ contract rtUSQ is IERC20, Ownable {
         }
     }
 
-    function _transferShares(
-        address _sender,
-        address _recipient,
-        uint256 _sharesAmount
-    ) internal {
+    function _transferShares(address _sender, address _recipient, uint256 _sharesAmount) internal {
         require(_sender != address(0), "TRANSFER_FROM_ZERO_ADDR");
         require(_recipient != address(0), "TRANSFER_TO_ZERO_ADDR");
         require(_recipient != address(this), "TRANSFER_TO_STETH_CONTRACT");
@@ -291,9 +239,8 @@ contract rtUSQ is IERC20, Ownable {
     function _mint(address account, uint256 amount) internal virtual {
         require(account != address(0), "ERC20: mint to the zero address");
 
-        uint256 _sharesAmount = _totalSupply == 0
-            ? amount
-            : getSharesByRt(amount);
+        uint256 _sharesAmount = _totalSupply == 0 ? amount : getSharesByRt(amount);
+        require(amount == 0 || _sharesAmount > 0, "AMOUNT_TOO_SMALL");
 
         shares[account] = shares[account].add(_sharesAmount);
 
@@ -304,73 +251,20 @@ contract rtUSQ is IERC20, Ownable {
         emit Transfer(address(0), account, amount);
     }
 
-    function _mintShares(
-        address _recipient,
-        uint256 _sharesAmount
-    ) internal returns (uint256 newTotalShares) {
-        require(_recipient != address(0), "MINT_TO_ZERO_ADDR");
-        newTotalShares = _getTotalShares().add(_sharesAmount);
-        _totalShares = newTotalShares;
-        shares[_recipient] = shares[_recipient].add(_sharesAmount);
-        return newTotalShares;
-    }
-
     function _burn(address account, uint256 amount) internal virtual {
         require(account != address(0), "ERC20: burn from the zero address");
         uint256 accountBalance = balanceOf(account);
         require(accountBalance >= amount, "ERC20: burn amount exceeds balance");
         uint256 _sharesAmount = getSharesByRt(amount);
+        require(amount == 0 || _sharesAmount > 0, "AMOUNT_TOO_SMALL");
         shares[account] = shares[account].sub(_sharesAmount);
         _totalShares = _getTotalShares().sub(_sharesAmount);
         _totalSupply = _totalSupply.sub(amount);
         emit Transfer(account, address(0), amount);
     }
 
-    function _burnShares(
-        address _account,
-        uint256 _sharesAmount
-    ) internal returns (uint256 newTotalShares) {
-        require(_account != address(0), "BURN_FROM_ZERO_ADDR");
-
-        uint256 accountShares = shares[_account];
-        require(_sharesAmount <= accountShares, "BALANCE_EXCEEDED");
-
-        uint256 preRebaseTokenAmount = getRShares(_sharesAmount);
-
-        newTotalShares = _getTotalShares().sub(_sharesAmount);
-
-        _totalShares = newTotalShares;
-        shares[_account] = accountShares.sub(_sharesAmount);
-
-        uint256 postRebaseTokenAmount = getRShares(_sharesAmount);
-
-        emit SharesBurnt(
-            _account,
-            preRebaseTokenAmount,
-            postRebaseTokenAmount,
-            _sharesAmount
-        );
-    }
-
-    function _emitTransferEvents(
-        address _from,
-        address _to,
-        uint256 _tokenAmount,
-        uint256 _sharesAmount
-    ) internal {
+    function _emitTransferEvents(address _from, address _to, uint256 _tokenAmount, uint256 _sharesAmount) internal {
         emit Transfer(_from, _to, _tokenAmount);
         emit TransferShares(_from, _to, _sharesAmount);
-    }
-
-    function _emitTransferAfterMintingShares(
-        address _to,
-        uint256 _sharesAmount
-    ) internal {
-        _emitTransferEvents(
-            address(0),
-            _to,
-            getRShares(_sharesAmount),
-            _sharesAmount
-        );
     }
 }

@@ -1,23 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.7;
 
-import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@uniswap/swap-router-contracts/contracts/interfaces/ISwapRouter02.sol";
-
-import "./utils/PathParser.sol";
-import "./utils/TransferHelper.sol";
-import "./utils/Ownable.sol";
-import "./utils/ReentrancyGuard.sol";
-import "./interface/IRtUSQ.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { IRtUSQ } from "./interface/IRtUSQ.sol";
+import { Ownable } from "./utils/Ownable.sol";
+import { ReentrancyGuard } from "./utils/ReentrancyGuard.sol";
 
 contract rtUSQVault is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
-    ISwapRouter02 public immutable router;
-
     address public immutable rtUSQ;
     address public tokenUsd;
-    mapping(address => bool) public supportTokens;
     mapping(address => uint256) public userAsset;
 
     bool public investEnabled = false;
@@ -40,15 +33,9 @@ contract rtUSQVault is Ownable, ReentrancyGuard {
         _;
     }
 
-    modifier notSupportToken(address token) {
-        if (!supportTokens[token]) revert InvalidToken();
-        _;
-    }
-
     event Invest(address indexed user, address indexed token, uint256 indexed amt);
     event Redeem(address indexed user, uint256 indexed amt);
     event Withdraw(address indexed user, address indexed token, uint256 indexed amt);
-    error InvalidToken();
     error NotWithdrawable();
     error NotInvestable();
     error NotRedeemable();
@@ -57,28 +44,18 @@ contract rtUSQVault is Ownable, ReentrancyGuard {
     event Refund(address token, address to);
     event UpdateAdmin(address old, address newAddress);
     event UpdateAssetManager(address old, address newAddress);
-    event UpdateSupportToken(address token, bool support);
     event UpdateMaxSupply(uint256 indexed max, uint256 indexed subscribed);
+    event UpdateUsdToken(address old, address newAddress);
 
-    constructor(
-        address _rtUSQ,
-        address _router,
-        address _usdt1,
-        address _usdt,
-        address _admin,
-        address _assetManger
-    ) Ownable(msg.sender) {
+    constructor(address _rtUSQ, address _usdt, address _admin, address _assetManger) Ownable(msg.sender) {
         require(_rtUSQ != address(0), "Cannot be zero address");
         require(_assetManger != address(0), "Cannot be zero address");
         require(_admin != address(0), "Cannot be zero address");
         require(_usdt != address(0), "Cannot be zero address");
         rtUSQ = _rtUSQ;
         tokenUsd = _usdt;
-        supportTokens[_usdt1] = true;
-        supportTokens[_usdt] = true;
         admin = _admin;
         assetManager = _assetManger;
-        router = ISwapRouter02(_router);
         maxSupply = 1000000 * 1e18;
     }
 
@@ -86,41 +63,17 @@ contract rtUSQVault is Ownable, ReentrancyGuard {
         return (investEnabled, redeemEnabled, withdrawEnabled);
     }
 
-    function invest(
-        address token,
-        uint256 _amount,
-        uint256 amountOutMin,
-        bytes calldata path
-    ) public notSupportToken(token) nonReentrant {
+    function invest(uint256 _amount) public nonReentrant {
         if (!investEnabled || redeemEnabled) {
             revert NotInvestable();
         }
         if (totalSubscribed >= maxSupply) {
             revert NotInvestable();
         }
-        if (token == tokenUsd) {
-            IERC20(token).safeTransferFrom(_msgSender(), assetManager, _amount);
-            IRtUSQ(rtUSQ).mintTo(_msgSender(), _amount);
-            totalSubscribed += _amount;
-            emit Invest(_msgSender(), token, _amount);
-        } else {
-            _checkPath(path);
-            IERC20(token).safeTransferFrom(_msgSender(), address(this), _amount);
-            TransferHelper.safeApprove(token, address(router), _amount);
-            IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter.ExactInputParams({
-                path: path,
-                recipient: assetManager,
-                amountIn: _amount,
-                amountOutMinimum: amountOutMin
-            });
-
-            uint256 amountOut = router.exactInput(params);
-            if (amountOut > 0) {
-                IRtUSQ(rtUSQ).mintTo(_msgSender(), amountOut);
-                totalSubscribed += amountOut;
-            }
-            emit Invest(_msgSender(), token, amountOut);
-        }
+        IERC20(tokenUsd).safeTransferFrom(_msgSender(), assetManager, _amount);
+        IRtUSQ(rtUSQ).mintTo(_msgSender(), _amount);
+        totalSubscribed += _amount;
+        emit Invest(_msgSender(), tokenUsd, _amount);
     }
 
     function redeem(uint256 _amount) public nonReentrant {
@@ -132,11 +85,7 @@ contract rtUSQVault is Ownable, ReentrancyGuard {
         emit Redeem(_msgSender(), _amount);
     }
 
-    function withdraw(
-        address token,
-        uint256 amountOutMin,
-        bytes calldata path
-    ) public notSupportToken(token) nonReentrant {
+    function withdraw() public nonReentrant {
         if (!withdrawEnabled || redeemEnabled) {
             revert NotWithdrawable();
         }
@@ -144,24 +93,8 @@ contract rtUSQVault is Ownable, ReentrancyGuard {
         uint256 amt = userAsset[_user];
         if (amt > 0) {
             userAsset[_user] = 0;
-            if (token == tokenUsd) {
-                IERC20(token).transfer(_user, amt);
-                emit Withdraw(_user, token, amt);
-            } else {
-                address outputToken = PathParser.getLastToken(path);
-                if (outputToken != token) {
-                    revert InvalidToken();
-                }
-                TransferHelper.safeApprove(tokenUsd, address(router), amt);
-                IV3SwapRouter.ExactInputParams memory params = IV3SwapRouter.ExactInputParams({
-                    path: path,
-                    recipient: _user,
-                    amountIn: amt,
-                    amountOutMinimum: amountOutMin
-                });
-                router.exactInput(params);
-                emit Withdraw(_user, token, amt);
-            }
+            IERC20(tokenUsd).safeTransfer(_user, amt);
+            emit Withdraw(_user, tokenUsd, amt);
         } else {
             revert NoWithdrawableAssets();
         }
@@ -198,12 +131,9 @@ contract rtUSQVault is Ownable, ReentrancyGuard {
     }
 
     function setUsdToken(address _token) external onlyOwner {
+        address prev = tokenUsd;
         tokenUsd = _token;
-    }
-
-    function updateSupportToken(address _token, bool _support) external onlyOwner {
-        supportTokens[_token] = _support;
-        emit UpdateSupportToken(_token, _support);
+        emit UpdateUsdToken(prev, _token);
     }
 
     function setAdmin(address admin_) external onlyOwner {
@@ -218,12 +148,5 @@ contract rtUSQVault is Ownable, ReentrancyGuard {
         address prev = assetManager;
         assetManager = assetManager_;
         emit UpdateAssetManager(prev, assetManager_);
-    }
-
-    function _checkPath(bytes calldata path) internal view {
-        address outputToken = PathParser.getLastToken(path);
-        if (outputToken != tokenUsd) {
-            revert InvalidToken();
-        }
     }
 }

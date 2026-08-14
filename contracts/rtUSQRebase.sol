@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.7;
 
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import "@uniswap/swap-router-contracts/contracts/interfaces/ISwapRouter02.sol";
-import "./utils/Ownable.sol";
-import "./interface/IrtERC20.sol";
-import "./utils/SafeMath.sol";
-import "./utils/TransferHelper.sol";
+import { IERC20 } from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import { SafeERC20 } from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import { IrtERC20 } from "./interface/IrtERC20.sol";
+import { Ownable } from "./utils/Ownable.sol";
+import { SafeMath } from "./utils/SafeMath.sol";
 
 contract rtUSQRebase is Ownable {
     using SafeMath for uint256;
@@ -70,10 +69,13 @@ contract rtUSQRebase is Ownable {
     }
 
     function setTimeInterval(uint256 _time) external onlyOwner {
+        uint256 prev = timeInterval;
         timeInterval = _time;
+        emit UpdateTimeInterval(prev, _time);
     }
 
     event UpdateMaxAmount(uint256 pre, uint256 next);
     event Withdraw(address token, address to);
     event UpdateAdmin(address pre, address next);
+    event UpdateTimeInterval(uint256 pre, uint256 next);
 }
