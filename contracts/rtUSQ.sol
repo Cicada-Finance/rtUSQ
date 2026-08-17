@@ -229,7 +229,10 @@ contract rtUSQ is IERC20, Ownable {
     }
 
     function _transfer(address _sender, address _recipient, uint256 _amount) internal virtual {
-        uint256 _sharesToTransfer = getSharesByRt(_amount);
+        uint256 senderBalance = balanceOf(_sender);
+        uint256 _sharesToTransfer = _amount > 0 && _amount == senderBalance
+            ? _sharesOf(_sender)
+            : getSharesByRt(_amount);
         require(_amount == 0 || _sharesToTransfer > 0, "AMOUNT_TOO_SMALL");
 
         _transferShares(_sender, _recipient, _sharesToTransfer);
@@ -283,7 +286,7 @@ contract rtUSQ is IERC20, Ownable {
         require(account != address(0), "ERC20: burn from the zero address");
         uint256 accountBalance = balanceOf(account);
         require(accountBalance >= amount, "ERC20: burn amount exceeds balance");
-        uint256 _sharesAmount = getSharesByRt(amount);
+        uint256 _sharesAmount = amount > 0 && amount == accountBalance ? _sharesOf(account) : getSharesByRt(amount);
         require(amount == 0 || _sharesAmount > 0, "AMOUNT_TOO_SMALL");
         shares[account] = shares[account].sub(_sharesAmount);
         _totalShares = _getTotalShares().sub(_sharesAmount);
