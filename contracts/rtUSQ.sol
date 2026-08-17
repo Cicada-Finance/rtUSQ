@@ -12,6 +12,11 @@ contract rtUSQ is IERC20, Ownable {
     using SafeMathInt for int256;
 
     uint256 internal constant INFINITE_ALLOWANCE = ~uint256(0);
+    uint256 public constant GENESIS_BLOCK = 115730532;
+    bytes32 public constant GENESIS_BLOCK_HASH =
+        0x8624a3b60bb32ec1a5cae28ee64f37c1d131bb5d744aa1bdbf7ca5991ecf5e00;
+    uint256 public constant GENESIS_TOTAL_SUPPLY = 1506830395981790900318539;
+    uint256 public constant GENESIS_TOTAL_SHARES = 1424277497480449271384736;
 
     string private _name;
     string private _symbol;
@@ -29,6 +34,7 @@ contract rtUSQ is IERC20, Ownable {
 
     address public monetaryPolicy;
     address public rtUSQVault;
+    address public immutable GENESIS_DEVELOPER;
 
     modifier onlyMonetaryPolicy() {
         require(msg.sender == monetaryPolicy || msg.sender == owner(), "permissions error");
@@ -46,9 +52,31 @@ contract rtUSQ is IERC20, Ownable {
 
     event LogMonetaryPolicyUpdated(address monetaryPolicy);
 
+    event GenesisMinted(
+        address indexed developer,
+        uint256 indexed snapshotBlock,
+        bytes32 snapshotBlockHash,
+        uint256 tokenAmount,
+        uint256 sharesAmount
+    );
+
     constructor(string memory name_, string memory symbol_) Ownable(msg.sender) {
         _name = name_;
         _symbol = symbol_;
+        GENESIS_DEVELOPER = msg.sender;
+        _totalSupply = GENESIS_TOTAL_SUPPLY;
+        _totalShares = GENESIS_TOTAL_SHARES;
+        shares[msg.sender] = GENESIS_TOTAL_SHARES;
+
+        emit Transfer(address(0), msg.sender, GENESIS_TOTAL_SUPPLY);
+        emit TransferShares(address(0), msg.sender, GENESIS_TOTAL_SHARES);
+        emit GenesisMinted(
+            msg.sender,
+            GENESIS_BLOCK,
+            GENESIS_BLOCK_HASH,
+            GENESIS_TOTAL_SUPPLY,
+            GENESIS_TOTAL_SHARES
+        );
     }
 
     function initialize(address _rtUSQVault) external onlyOwner {
