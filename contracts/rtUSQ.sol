@@ -13,8 +13,7 @@ contract rtUSQ is IERC20, Ownable {
 
     uint256 internal constant INFINITE_ALLOWANCE = ~uint256(0);
     uint256 public constant GENESIS_BLOCK = 115730532;
-    bytes32 public constant GENESIS_BLOCK_HASH =
-        0x8624a3b60bb32ec1a5cae28ee64f37c1d131bb5d744aa1bdbf7ca5991ecf5e00;
+    bytes32 public constant GENESIS_BLOCK_HASH = 0x8624a3b60bb32ec1a5cae28ee64f37c1d131bb5d744aa1bdbf7ca5991ecf5e00;
     uint256 public constant GENESIS_TOTAL_SUPPLY = 1506830395981790900318539;
     uint256 public constant GENESIS_TOTAL_SHARES = 1424277497480449271384736;
 
@@ -70,13 +69,7 @@ contract rtUSQ is IERC20, Ownable {
 
         emit Transfer(address(0), msg.sender, GENESIS_TOTAL_SUPPLY);
         emit TransferShares(address(0), msg.sender, GENESIS_TOTAL_SHARES);
-        emit GenesisMinted(
-            msg.sender,
-            GENESIS_BLOCK,
-            GENESIS_BLOCK_HASH,
-            GENESIS_TOTAL_SUPPLY,
-            GENESIS_TOTAL_SHARES
-        );
+        emit GenesisMinted(msg.sender, GENESIS_BLOCK, GENESIS_BLOCK_HASH, GENESIS_TOTAL_SUPPLY, GENESIS_TOTAL_SHARES);
     }
 
     function initialize(address _rtUSQVault) external onlyOwner {
@@ -166,6 +159,30 @@ contract rtUSQ is IERC20, Ownable {
         return _sharesAmount.mul(totalSupply()).div(_getTotalShares());
     }
 
+    function _getSharesByRtRoundUp(uint256 _rAmount) internal view returns (uint256) {
+        if (_rAmount == 0) {
+            return 0;
+        }
+
+        if (_totalSupply == 0 || _totalShares == 0) {
+            return _rAmount;
+        }
+
+        uint256 numerator = _rAmount.mul(_getTotalShares());
+        uint256 sharesAmount = numerator.div(totalSupply());
+        return numerator.mod(totalSupply()) == 0 ? sharesAmount : sharesAmount.add(1);
+    }
+
+    function _getRSharesRoundUp(uint256 _sharesAmount) internal view returns (uint256) {
+        if (_sharesAmount == 0 || _totalSupply == 0 || _totalShares == 0) {
+            return 0;
+        }
+
+        uint256 numerator = _sharesAmount.mul(totalSupply());
+        uint256 tokensAmount = numerator.div(_getTotalShares());
+        return numerator.mod(_getTotalShares()) == 0 ? tokensAmount : tokensAmount.add(1);
+    }
+
     function _getTotalShares() internal view returns (uint256) {
         return _totalShares;
     }
@@ -212,15 +229,15 @@ contract rtUSQ is IERC20, Ownable {
     }
 
     function transferShares(address _recipient, uint256 _sharesAmount) external returns (uint256) {
-        _transferShares(msg.sender, _recipient, _sharesAmount);
-        uint256 tokensAmount = getRShares(_sharesAmount);
+        uint256 tokensAmount = _getRSharesRoundUp(_sharesAmount);
         require(_sharesAmount == 0 || tokensAmount > 0, "AMOUNT_TOO_SMALL");
+        _transferShares(msg.sender, _recipient, _sharesAmount);
         _emitTransferEvents(msg.sender, _recipient, tokensAmount, _sharesAmount);
         return tokensAmount;
     }
 
     function transferSharesFrom(address _sender, address _recipient, uint256 _sharesAmount) external returns (uint256) {
-        uint256 tokensAmount = getRShares(_sharesAmount);
+        uint256 tokensAmount = _getRSharesRoundUp(_sharesAmount);
         require(_sharesAmount == 0 || tokensAmount > 0, "AMOUNT_TOO_SMALL");
         _spendAllowance(_sender, msg.sender, tokensAmount);
         _transferShares(_sender, _recipient, _sharesAmount);
@@ -232,7 +249,7 @@ contract rtUSQ is IERC20, Ownable {
         uint256 senderBalance = balanceOf(_sender);
         uint256 _sharesToTransfer = _amount > 0 && _amount == senderBalance
             ? _sharesOf(_sender)
-            : getSharesByRt(_amount);
+            : _getSharesByRtRoundUp(_amount);
         require(_amount == 0 || _sharesToTransfer > 0, "AMOUNT_TOO_SMALL");
 
         _transferShares(_sender, _recipient, _sharesToTransfer);
@@ -286,7 +303,9 @@ contract rtUSQ is IERC20, Ownable {
         require(account != address(0), "ERC20: burn from the zero address");
         uint256 accountBalance = balanceOf(account);
         require(accountBalance >= amount, "ERC20: burn amount exceeds balance");
-        uint256 _sharesAmount = amount > 0 && amount == accountBalance ? _sharesOf(account) : getSharesByRt(amount);
+        uint256 _sharesAmount = amount > 0 && amount == accountBalance
+            ? _sharesOf(account)
+            : _getSharesByRtRoundUp(amount);
         require(amount == 0 || _sharesAmount > 0, "AMOUNT_TOO_SMALL");
         shares[account] = shares[account].sub(_sharesAmount);
         _totalShares = _getTotalShares().sub(_sharesAmount);

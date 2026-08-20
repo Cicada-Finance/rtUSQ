@@ -19,6 +19,7 @@ contract WrappedRtUSQ is ERC4626, Ownable {
     error NativeTransferFailed();
     error NonEmptyVault();
     error UnexpectedGenesisAssets();
+    error UnexpectedGenesisTransferCost();
     error ZeroAddress();
 
     uint256 public constant GENESIS_BLOCK = 115730532;
@@ -26,6 +27,7 @@ contract WrappedRtUSQ is ERC4626, Ownable {
     uint256 public constant GENESIS_TOTAL_SUPPLY = 472817435057562679109599;
     uint256 public constant GENESIS_TOTAL_ASSETS = 491355694115188876511399;
     uint256 public constant GENESIS_ASSET_SHARES = 464436382656835717518787;
+    uint256 public constant GENESIS_TRANSFER_COST = 491355694115188876511400;
 
     address public immutable GENESIS_DEVELOPER;
     bool public migrationInitialized;
@@ -49,27 +51,28 @@ contract WrappedRtUSQ is ERC4626, Ownable {
     }
 
     /// @notice Atomically restores the old wrapper backing and mints its snapshot supply to the developer.
-    /// @dev The developer must first approve this contract for GENESIS_TOTAL_ASSETS rtUSQ.
+    /// @dev The developer must first approve this contract for GENESIS_TRANSFER_COST rtUSQ.
     function initializeMigration() external onlyOwner {
         if (msg.sender != GENESIS_DEVELOPER) revert GenesisDeveloperOnly();
         if (migrationInitialized) revert MigrationAlreadyInitialized();
         if (totalSupply() != 0 || totalAssets() != 0) revert NonEmptyVault();
 
         migrationInitialized = true;
-        uint256 transferredAssets = IRtUSQShares(asset()).transferSharesFrom(
+        uint256 transferCost = IRtUSQShares(asset()).transferSharesFrom(
             msg.sender,
             address(this),
             GENESIS_ASSET_SHARES
         );
-        if (transferredAssets != GENESIS_TOTAL_ASSETS) revert UnexpectedGenesisAssets();
+        if (transferCost != GENESIS_TRANSFER_COST) revert UnexpectedGenesisTransferCost();
+        if (totalAssets() != GENESIS_TOTAL_ASSETS) revert UnexpectedGenesisAssets();
 
         _mint(msg.sender, GENESIS_TOTAL_SUPPLY);
-        emit Deposit(msg.sender, msg.sender, transferredAssets, GENESIS_TOTAL_SUPPLY);
+        emit Deposit(msg.sender, msg.sender, GENESIS_TOTAL_ASSETS, GENESIS_TOTAL_SUPPLY);
         emit GenesisMinted(
             msg.sender,
             GENESIS_BLOCK,
             GENESIS_BLOCK_HASH,
-            transferredAssets,
+            GENESIS_TOTAL_ASSETS,
             GENESIS_ASSET_SHARES,
             GENESIS_TOTAL_SUPPLY
         );

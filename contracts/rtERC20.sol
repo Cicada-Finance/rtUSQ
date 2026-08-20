@@ -184,15 +184,49 @@ contract rtERC20 is IERC20, Ownable {
         return _sharesAmount.mul(_rtTotalSupply()).div(_getTotalShares());
     }
 
+    function _getSharesByR2RoundUp(uint256 _rAmount) internal view returns (uint256) {
+        if (_rAmount == 0) {
+            return 0;
+        }
+
+        uint256 totalSupply_ = _rtTotalSupply();
+        uint256 totalShares_ = _getTotalShares();
+        if (totalSupply_ == 0 || totalShares_ == 0) {
+            return _rAmount;
+        }
+
+        uint256 numerator = _rAmount.mul(totalShares_);
+        uint256 sharesAmount = numerator.div(totalSupply_);
+        return numerator.mod(totalSupply_) == 0 ? sharesAmount : sharesAmount.add(1);
+    }
+
+    function _getRSharesRoundUp(uint256 _sharesAmount) internal view returns (uint256) {
+        if (_sharesAmount == 0) {
+            return 0;
+        }
+
+        uint256 totalSupply_ = _rtTotalSupply();
+        uint256 totalShares_ = _getTotalShares();
+        if (totalSupply_ == 0 || totalShares_ == 0) {
+            return 0;
+        }
+
+        uint256 numerator = _sharesAmount.mul(totalSupply_);
+        uint256 tokensAmount = numerator.div(totalShares_);
+        return numerator.mod(totalShares_) == 0 ? tokensAmount : tokensAmount.add(1);
+    }
+
     function transferShares(address _recipient, uint256 _sharesAmount) external returns (uint256) {
+        uint256 tokensAmount = _getRSharesRoundUp(_sharesAmount);
+        require(_sharesAmount == 0 || tokensAmount > 0, "AMOUNT_TOO_SMALL");
         _transferShares(msg.sender, _recipient, _sharesAmount);
-        uint256 tokensAmount = getRShares(_sharesAmount);
         _emitTransferEvents(msg.sender, _recipient, tokensAmount, _sharesAmount);
         return tokensAmount;
     }
 
     function transferSharesFrom(address _sender, address _recipient, uint256 _sharesAmount) external returns (uint256) {
-        uint256 tokensAmount = getRShares(_sharesAmount);
+        uint256 tokensAmount = _getRSharesRoundUp(_sharesAmount);
+        require(_sharesAmount == 0 || tokensAmount > 0, "AMOUNT_TOO_SMALL");
         _spendAllowance(_sender, msg.sender, tokensAmount);
         _transferShares(_sender, _recipient, _sharesAmount);
         _emitTransferEvents(_sender, _recipient, tokensAmount, _sharesAmount);
@@ -200,7 +234,11 @@ contract rtERC20 is IERC20, Ownable {
     }
 
     function _transfer(address _sender, address _recipient, uint256 _amount) internal virtual {
-        uint256 _sharesToTransfer = getSharesByR2(_amount);
+        uint256 senderBalance = balanceOf(_sender);
+        uint256 _sharesToTransfer = _amount > 0 && _amount == senderBalance
+            ? _sharesOf(_sender)
+            : _getSharesByR2RoundUp(_amount);
+        require(_amount == 0 || _sharesToTransfer > 0, "AMOUNT_TOO_SMALL");
 
         _transferShares(_sender, _recipient, _sharesToTransfer);
         _emitTransferEvents(_sender, _recipient, _amount, _sharesToTransfer);
@@ -272,7 +310,10 @@ contract rtERC20 is IERC20, Ownable {
         uint256 accountBalance = balanceOf(account);
         require(accountBalance >= amount, "ERC20: burn amount exceeds balance");
 
-        uint256 _sharesAmount = getSharesByR2(amount);
+        uint256 _sharesAmount = amount > 0 && amount == accountBalance
+            ? _sharesOf(account)
+            : _getSharesByR2RoundUp(amount);
+        require(amount == 0 || _sharesAmount > 0, "AMOUNT_TOO_SMALL");
 
         shares[account] = shares[account].sub(_sharesAmount);
 
