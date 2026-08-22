@@ -284,6 +284,7 @@ contract rtERC20 is IERC20, Ownable {
         require(account != address(0), "ERC20: mint to the zero address");
 
         uint256 _sharesAmount = _rtTotalSupply() == 0 ? amount : getSharesByR2(amount);
+        require(amount == 0 || _sharesAmount > 0, "AMOUNT_TOO_SMALL");
 
         shares[account] = shares[account].add(_sharesAmount);
 
